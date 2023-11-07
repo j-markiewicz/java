@@ -78,7 +78,7 @@ public class NumberStatistics implements Statistics {
 	@Override
 	public void addNumbers(Map<Integer, Set<Position>> numberPositions) {
 		numberPositions.forEach((num, positions) -> {
-			positions.forEach((pos) -> set(pos, num));
+			positions.forEach((pos) -> set(normalizePos(pos), num));
 		});
 	}
 

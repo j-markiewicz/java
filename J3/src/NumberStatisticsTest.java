@@ -85,7 +85,7 @@ class NumberStatisticsTest {
 		ns.sideLength(5);
 		ns.addNumbers(Map.of(
 				1, Set.of(p(1, 1)),
-				2, Set.of(p(4, 1), p(4, 2), p(3, 4)),
+				2, Set.of(p(4, 1), p(9, 2), p(3, 4)),
 				5, Set.of(p(2, 2))
 		));
 		assert ns.get(new Position(2, 2)).equals(5);

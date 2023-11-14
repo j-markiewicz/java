@@ -38,7 +38,7 @@ class TestLabyrinth implements PlayerController {
 	List<Position> visited = new ArrayList<>();
 	int underwaterMoves = 0;
 	Direction nextMoveMustBe = null;
-	final int maxUnderwaterMoves = 4;
+	int maxUnderwaterMoves = 10;
 
 	TestLabyrinth(int col, int row) {
 		current = new Position(col, row);
@@ -154,5 +154,61 @@ class IndianaTest {
 		explorer.setPlayerController(labyrinth);
 		explorer.findExit();
 		assert labyrinth.foundExit;
+	}
+
+	@org.junit.jupiter.api.Test
+	void findExitWater() {
+		var explorer = new Indiana();
+		var labyrinth = new TestLabyrinth(1, 7);
+		labyrinth.map = List.of(
+			LabyrinthTile.Wall, LabyrinthTile.Exit, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Path, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Path, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+			LabyrinthTile.Wall, LabyrinthTile.Exit, LabyrinthTile.Wall
+		);
+		labyrinth.width = 3;
+		labyrinth.height = 12;
+		labyrinth.maxUnderwaterMoves = 5;
+		explorer.underwaterMovesAllowed(labyrinth.maxUnderwaterMoves);
+		explorer.setPlayerController(labyrinth);
+		explorer.findExit();
+		assert labyrinth.foundExit;
+		assert labyrinth.current.equals(new Position(1, 11));
+	}
+
+	@org.junit.jupiter.api.Test
+	void findExitWaterInverted() {
+		var explorer = new Indiana();
+		var labyrinth = new TestLabyrinth(1, 4);
+		labyrinth.map = List.of(
+				LabyrinthTile.Wall, LabyrinthTile.Exit, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Path, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Path, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Water, LabyrinthTile.Wall,
+				LabyrinthTile.Wall, LabyrinthTile.Exit, LabyrinthTile.Wall
+		);
+		labyrinth.width = 3;
+		labyrinth.height = 12;
+		labyrinth.maxUnderwaterMoves = 5;
+		explorer.underwaterMovesAllowed(labyrinth.maxUnderwaterMoves);
+		explorer.setPlayerController(labyrinth);
+		explorer.findExit();
+		assert labyrinth.foundExit;
+		assert labyrinth.current.equals(new Position(1, 0));
 	}
 }

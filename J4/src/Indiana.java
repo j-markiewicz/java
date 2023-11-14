@@ -5,6 +5,8 @@ import java.util.Stack;
 
 public class Indiana implements Explorer {
 	int maxUnderwaterMoves;
+	int currentUnderwaterMoves = 0;
+	boolean isUnderwater = false;
 	PlayerController controller;
 
 	/**
@@ -43,13 +45,42 @@ public class Indiana implements Explorer {
 				path.push(pos);
 				var newPos = step(pos, map);
 
+				assert currentUnderwaterMoves <= maxUnderwaterMoves;
+				if (currentUnderwaterMoves * 2 + 1 >= maxUnderwaterMoves) {
+					while (map.get(newPos).equals(Tile.Water)) {
+						pos = path.pop();
+						var dir = adjacentDirection(newPos, pos);
+						newPos = pos;
+
+						try {
+							controller.move(dir);
+						} catch (Flooded ignored) {
+						} catch (Exception e) {
+							throw new ExceptionInSafeMoveException();
+						}
+					}
+
+					isUnderwater = false;
+					currentUnderwaterMoves = 0;
+					continue;
+				}
+
 				if (newPos.equals(pos)) {
 					path.pop();
 					pos = path.pop();
 					var dir = adjacentDirection(newPos, pos);
 
 					try {
+						if (isUnderwater) {
+							currentUnderwaterMoves++;
+						} else {
+							currentUnderwaterMoves = 0;
+						}
+
+						isUnderwater = false;
 						controller.move(dir);
+					} catch (Flooded e) {
+						isUnderwater = true;
 					} catch (Exception e) {
 						throw new ExceptionInSafeMoveException();
 					}
@@ -72,10 +103,20 @@ public class Indiana implements Explorer {
 			}
 
 			try {
+				if (isUnderwater) {
+					currentUnderwaterMoves++;
+				} else {
+					currentUnderwaterMoves = 0;
+				}
+
 				controller.move(dir);
 			} catch (OnFire e) {
 				try {
+					isUnderwater = false;
 					controller.move(opposite(dir));
+				} catch (Flooded f) {
+					currentUnderwaterMoves = 0;
+					isUnderwater = true;
 				} catch (Exception exception) {
 					throw new ExceptionInFireEscapeException();
 				}
@@ -84,6 +125,9 @@ public class Indiana implements Explorer {
 				continue;
 			} catch (Flooded e) {
 				map.put(next, Tile.Water);
+				map.put(nextClockwise(dir).step(next), Tile.Wall);
+				map.put(opposite(nextClockwise(dir)).step(next), Tile.Wall);
+				isUnderwater = true;
 				return next;
 			} catch (Wall e) {
 				map.put(next, Tile.Wall);
@@ -91,6 +135,7 @@ public class Indiana implements Explorer {
 			}
 
 			map.put(next, Tile.Path);
+			isUnderwater = false;
 			return next;
 		}
 
@@ -124,6 +169,25 @@ public class Indiana implements Explorer {
 		}
 
 		throw new RuntimeException("positions are not adjacent");
+	}
+
+	Direction nextClockwise(Direction dir) {
+		switch (dir) {
+			case NORTH -> {
+				return Direction.EAST;
+			}
+			case EAST -> {
+				return Direction.SOUTH;
+			}
+			case SOUTH -> {
+				return Direction.WEST;
+			}
+			case WEST -> {
+				return Direction.NORTH;
+			}
+		}
+
+		return dir;
 	}
 }
 

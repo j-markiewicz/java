@@ -124,6 +124,28 @@ class ProgrammableCalculatorTest {
 	}
 
 	@org.junit.jupiter.api.Test
+	void let2() {
+		String program = """
+				1 INPUT a
+				22 LET a = a + 1
+				333 LET bb = 123 * a
+				4444 LET ccc = 7 * 123
+				55555 LET dddd = bb - ccc
+				666666 PRINT dddd
+				""";
+
+		var calc = new ProgrammableCalculator();
+		var stdout = new StringLinePrinter();
+		calc.setStdin(new StringLineReader("1"));
+		calc.setStdout(stdout);
+		calc.programCodeReader(new BufferedReader(new StringReader(program)));
+
+		calc.run(1);
+
+		assert stdout.lines.equals(List.of("-615"));
+	}
+
+	@org.junit.jupiter.api.Test
 	void print() {
 		String program = """
 				10 LET a = 100

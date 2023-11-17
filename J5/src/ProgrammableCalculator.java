@@ -514,7 +514,6 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 
 		while (pc <= program.lastKey()) {
 			var instruction = program.get(pc);
-			System.out.println("Executing line " + pc + ": '" + instruction + "' with '" + vars + "'");
 
 			try {
 				var next = instruction.run(stdin, stdout, vars);

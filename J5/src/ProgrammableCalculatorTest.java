@@ -59,6 +59,32 @@ class ProgrammableCalculatorTest {
 	}
 
 	@org.junit.jupiter.api.Test
+	void negative() {
+		String program = """
+				100000 LET count = -10
+				200000 PRINT "Hello, World!"
+				300000 LET count = count - -1
+				400000 IF count < -5 GOTO 200000
+				""";
+
+		var calc = new ProgrammableCalculator();
+		var stdout = new StringLinePrinter();
+		calc.setStdin(new StringLineReader(""));
+		calc.setStdout(stdout);
+		calc.programCodeReader(new BufferedReader(new StringReader(program)));
+
+		calc.run(100000);
+
+		assert stdout.lines.equals(List.of(
+				"Hello, World!",
+				"Hello, World!",
+				"Hello, World!",
+				"Hello, World!",
+				"Hello, World!"
+		));
+	}
+
+	@org.junit.jupiter.api.Test
 	void case_() {
 		String program = """
 				110 lEt a = 1

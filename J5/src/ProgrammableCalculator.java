@@ -179,7 +179,7 @@ interface Instruction {
 			var res = new If();
 
 			var instRegex = Pattern.compile(
-					"^(?<left>\\p{Alpha}+|\\d+) (?<cmp>[=<>]) (?<right>\\p{Alpha}+|\\d+) GOTO (?<dest>\\d+)$");
+					"^(?<left>\\p{Alpha}+|-?\\d+) (?<cmp>[=<>]) (?<right>\\p{Alpha}+|-?\\d+) GOTO (?<dest>\\d+)$");
 
 			try {
 				var matcher = instRegex.matcher(line);
@@ -263,9 +263,9 @@ interface Expression {
 			return Variable.parse(expr);
 		} else if (expr.matches("^(?<quot>[\"']).*?\\k<quot>$")) {
 			return Str.parse(expr);
-		} else if (expr.matches("^\\d+$")) {
+		} else if (expr.matches("^-?\\d+$")) {
 			return Int.parse(expr);
-		} else if (expr.matches("^(\\p{Alpha}+|\\d+) [-+/*] (\\p{Alpha}+|\\d+)$")) {
+		} else if (expr.matches("^(\\p{Alpha}+|-?\\d+) [-+/*] (\\p{Alpha}+|-?\\d+)$")) {
 			return Calculation.parse(expr);
 		}
 
@@ -343,7 +343,7 @@ interface Expression {
 		int value;
 
 		static Int parse(String expr) {
-			var pattern = Pattern.compile("^(?<value>\\d+)$");
+			var pattern = Pattern.compile("^(?<value>-?\\d+)$");
 
 			try {
 				var matcher = pattern.matcher(expr);
@@ -372,7 +372,7 @@ interface Expression {
 		Expression right;
 
 		static Calculation parse(String expr) {
-			var pattern = Pattern.compile("^(?<left>\\p{Alpha}+|\\d+) (?<op>[-+/*]) (?<right>\\p{Alpha}+|\\d+)$");
+			var pattern = Pattern.compile("^(?<left>\\p{Alpha}+|-?\\d+) (?<op>[-+/*]) (?<right>\\p{Alpha}+|-?\\d+)$");
 
 			try {
 				var matcher = pattern.matcher(expr);
@@ -508,8 +508,8 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	public void run(int line) {
 		pc = line;
 
-		if (!program.containsKey(pc)) {
-			throw new RuntimeException("Start line " + pc + " is not in the program");
+		if (!program.containsKey(pc) || line == 0) {
+			throw new RuntimeException("Invalid start line " + pc);
 		}
 
 		while (pc <= program.lastKey()) {

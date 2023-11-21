@@ -45,9 +45,14 @@ public class Indiana implements Explorer {
 				path.push(pos);
 				var newPos = step(pos, map);
 
-				if (currentUnderwaterMoves * 2 + 1 > maxUnderwaterMoves) {
+				if (currentUnderwaterMoves * 2 > maxUnderwaterMoves) {
 					while (map.get(newPos).equals(Tile.Water)) {
 						pos = path.pop();
+
+						if (pos.equals(newPos)) {
+							pos = path.pop();
+						}
+
 						var dir = adjacentDirection(newPos, pos);
 						newPos = pos;
 
@@ -127,6 +132,7 @@ public class Indiana implements Explorer {
 				map.put(nextClockwise(dir).step(next), Tile.Wall);
 				map.put(opposite(nextClockwise(dir)).step(next), Tile.Wall);
 				isUnderwater = true;
+				currentUnderwaterMoves = 1;
 				return next;
 			} catch (Wall e) {
 				map.put(next, Tile.Wall);

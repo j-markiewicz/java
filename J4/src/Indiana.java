@@ -45,8 +45,7 @@ public class Indiana implements Explorer {
 				path.push(pos);
 				var newPos = step(pos, map);
 
-				assert currentUnderwaterMoves <= maxUnderwaterMoves;
-				if (currentUnderwaterMoves * 2 + 1 >= maxUnderwaterMoves) {
+				if (currentUnderwaterMoves * 2 + 1 > maxUnderwaterMoves) {
 					while (map.get(newPos).equals(Tile.Water)) {
 						pos = path.pop();
 						var dir = adjacentDirection(newPos, pos);

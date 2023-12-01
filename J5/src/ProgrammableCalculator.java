@@ -466,7 +466,7 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 
 		while (scanner.hasNext(lineRegex)) {
 			var line = lineRegex.matcher(scanner.next(lineRegex));
-			assert line.matches();
+			line.matches();
 
 			var index = Integer.valueOf(line.group("index"));
 			var instruction = Instruction.parse(line.group("inst"));

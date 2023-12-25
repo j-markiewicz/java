@@ -14,7 +14,9 @@ class TestThreadFactory implements ThreadFactory {
 
 	@Override
 	public Thread getThread(Runnable run) {
-		return new TestThread(run);
+		var res = new TestThread(run);
+		System.out.println("Got thread with id " + res.threadId());
+		return res;
 	}
 }
 

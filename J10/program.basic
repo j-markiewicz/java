@@ -1,0 +1,21 @@
+1 PRINT "Hello, World!"
+2 INPUT goal
+3 LET i = 0
+4 GOSUB 100
+5 LET i = i + 1
+6 IF i < goal GOTO 4
+7 GOSUB 200
+8 END
+100 LET x = i / 100
+101 LET x = x * 100
+102 IF x > i GOTO 105
+103 IF x < i GOTO 105
+104 PRINT i
+105 RETURN
+200 INPUT j
+201 LET k = 1
+202 IF k > j GOTO 206
+203 PRINT "Hello!"
+204 LET k = k + 1
+205 GOTO 202
+206 RETURN

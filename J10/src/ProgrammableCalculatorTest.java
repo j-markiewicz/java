@@ -1,7 +1,6 @@
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.StringReader;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -61,6 +60,35 @@ class ProgrammableCalculatorTest {
 				"Hello, World!",
 				"Hello, World!"
 		));
+	}
+
+	@org.junit.jupiter.api.Test
+	void runFromFile() {
+		for (int i = 0; i < 100; i++) {
+			try {
+				var calc = new ProgrammableCalculator();
+				var stdout = new StringLinePrinter();
+				var stdin = new StringLineReader(Files.readString(Path.of("./program.stdin")));
+				var program = new BufferedReader(new FileReader("./program.basic"));
+
+				var start = Instant.now();
+
+				calc.setStdin(stdin);
+				calc.setStdout(stdout);
+				calc.programCodeReader(program);
+				calc.run(1);
+
+				var end = Instant.now();
+
+				assert stdout.lines.equals(List.of(Files.readString(Path.of("./program.stdout")).split("\r?\n")));
+				System.err.println("[TEST] runFromFile() - " + Duration.between(start, end).toMillis() + "ms");
+			} catch (IOException e) {
+				System.err.println("[TEST] Error: " + e);
+				System.err.println(
+						"[TEST] Czy zostały pobrane pliki 'program.basic', 'program.stdin', i 'program.stdout' i umieszczone w katalogu projektu (nie w 'src')?");
+				assert false;
+			}
+		}
 	}
 
 	@org.junit.jupiter.api.Test

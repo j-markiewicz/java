@@ -3,12 +3,16 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
-	LineReader stdin;
-	LinePrinter stdout;
-	int pc;
-	NavigableMap<Integer, Instruction> program = new TreeMap<>();
-	Map<String, Integer> vars = new HashMap<>();
-	Stack<Integer> stack = new Stack<>();
+	static final boolean ASSERTIONS;
+	private final ExecutionContext ctx = new ExecutionContext();
+	private final NavigableMap<Integer, MaybeUnparsedInstruction> program = new TreeMap<>();
+	private final Stack<Integer> stack = new Stack<>();
+
+	static {
+		boolean assertions = false;
+		assert assertions = true;
+		ASSERTIONS = assertions;
+	}
 
 	/**
 	 * Metoda ustawia BufferedReader, który pozwala na odczyt kodu źródłowego
@@ -28,11 +32,22 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 			assert matchRes;
 
 			var index = Integer.valueOf(matcher.group("index"));
-			var instruction = Instruction.parse(matcher.group("inst"));
+			var instruction = new MaybeUnparsedInstruction(matcher.group("inst"));
 
-			assert !syncProgram.containsKey(index);
+			if (ASSERTIONS && syncProgram.containsKey(index)) {
+				throw new SyntaxError(index + " ...", "Duplicated line number");
+			}
+
 			syncProgram.put(index, instruction);
 		});
+
+		new Thread(() -> program.values().parallelStream().forEach(inst -> {
+			try {
+				inst.parse();
+			} catch (Exception ignored) {
+				// Ignore all errors when pre-parsing
+			}
+		})).start();
 	}
 
 	/**
@@ -42,7 +57,7 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	 */
 	@Override
 	public void setStdin(LineReader input) {
-		stdin = input;
+		ctx.stdin = input;
 	}
 
 	/**
@@ -52,7 +67,7 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	 */
 	@Override
 	public void setStdout(LinePrinter output) {
-		stdout = output;
+		ctx.stdout = output;
 	}
 
 	/**
@@ -62,21 +77,23 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	 */
 	@Override
 	public void run(int line) {
-		pc = line;
+		int pc = line;
 
 		assert !program.containsKey(0);
 		assert program.containsKey(pc);
 		assert pc > 0;
 
 		while (true) {
-			var instruction = program.get(pc);
+			var upInstruction = program.get(pc);
 
-			if (instruction == null) {
+			if (upInstruction == null) {
 				return;
 			}
 
+			var instruction = upInstruction.get();
+
 			try {
-				var next = instruction.run(stdin, stdout, vars);
+				var next = instruction.run(ctx);
 
 				switch (next) {
 					case 0 -> {
@@ -91,13 +108,13 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 					}
 					default -> {
 						if (next > 0) {
-							if (!program.containsKey(next)) {
+							if (ASSERTIONS && !program.containsKey(next)) {
 								throw new GotoError(pc, next);
 							}
 
 							pc = next;
 						} else {
-							if (!program.containsKey(-next)) {
+							if (ASSERTIONS && !program.containsKey(-next)) {
 								throw new GosubError(pc, -next);
 							}
 
@@ -113,9 +130,60 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	}
 }
 
+class MaybeUnparsedInstruction {
+	String source;
+	Instruction parsed;
+
+	MaybeUnparsedInstruction(String source) {
+		this.source = source;
+		parsed = null;
+	}
+
+	Instruction get() {
+		if (parsed == null) {
+			parse();
+		}
+
+		return parsed;
+	}
+
+	synchronized void parse() {
+		if (parsed == null) {
+			parsed = Instruction.parse(source);
+		}
+	}
+}
+
+class ExecutionContext {
+	ProgrammableCalculatorInterface.LineReader stdin;
+	ProgrammableCalculatorInterface.LinePrinter stdout;
+	HashMap<String, Integer> vars = new HashMap<>(32);
+
+	int getVar(String name) {
+		var value = vars.get(name);
+
+		if (value == null) {
+			throw new ExpressionValueException("no variable '" + name + "' defined");
+		}
+
+		return value;
+	}
+
+	void setVar(String name, int value) {
+		vars.put(name, value);
+	}
+
+	String read() {
+		return stdin.readLine();
+	}
+
+	void print(String line) {
+		stdout.printLine(line);
+	}
+}
+
 class PrecompiledRegexes {
 	final static Pattern NEWLINE = Pattern.compile("(\r?\n)+");
-	final static Pattern ANY = Pattern.compile(".+");
 	final static Pattern LINE = Pattern.compile("(?<index>\\d+) (?<inst>.+)");
 	final static Pattern INSTRUCTION = Pattern.compile("^(?<inst>\\p{Alpha}+)(?<rest>.*?)$");
 	final static Pattern LET = Pattern.compile("^(?<name>\\p{Alpha}+) = (?<expr>.+)$");
@@ -130,22 +198,22 @@ class PrecompiledRegexes {
 enum Comparison {
 	Eq {
 		@Override
-		boolean eval(Expression left, Expression right, Map<String, Integer> vars) {
-			return left.intValue(vars) == right.intValue(vars);
+		boolean eval(Expression left, Expression right, ExecutionContext ctx) {
+			return left.intValue(ctx) == right.intValue(ctx);
 		}
 	}, Lt {
 		@Override
-		boolean eval(Expression left, Expression right, Map<String, Integer> vars) {
-			return left.intValue(vars) < right.intValue(vars);
+		boolean eval(Expression left, Expression right, ExecutionContext ctx) {
+			return left.intValue(ctx) < right.intValue(ctx);
 		}
 	}, Gt {
 		@Override
-		boolean eval(Expression left, Expression right, Map<String, Integer> vars) {
-			return left.intValue(vars) > right.intValue(vars);
+		boolean eval(Expression left, Expression right, ExecutionContext ctx) {
+			return left.intValue(ctx) > right.intValue(ctx);
 		}
 	};
 
-	abstract boolean eval(Expression left, Expression right, Map<String, Integer> vars);
+	abstract boolean eval(Expression left, Expression right, ExecutionContext ctx);
 }
 
 interface Instruction {
@@ -181,9 +249,7 @@ interface Instruction {
 	/**
 	 * Run the instruction
 	 *
-	 * @param stdin The program's standard input
-	 * @param stdout The program's standard output
-	 * @param vars A map of all variables
+	 * @param ctx The execution context
 	 * @return An int with the following meanings:<br> <table>
 	 * <tr> <td>value</td> <td>meaning</td> </tr>
 	 * <tr> <td>MIN</td> <td>Return from a subroutine</td> </tr>
@@ -193,11 +259,7 @@ interface Instruction {
 	 * </table>
 	 * @throws StopRun To stop the execution of the program
 	 */
-	int run(
-			ProgrammableCalculatorInterface.LineReader stdin,
-			ProgrammableCalculatorInterface.LinePrinter stdout,
-			Map<String, Integer> vars
-	) throws StopRun;
+	int run(ExecutionContext ctx) throws StopRun;
 
 	class Let implements Instruction {
 		String name;
@@ -224,12 +286,8 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
-			vars.put(name, value.intValue(vars));
+		public int run(ExecutionContext ctx) {
+			ctx.setVar(name, value.intValue(ctx));
 			return 0;
 		}
 	}
@@ -248,12 +306,8 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
-			stdout.printLine(value.stringValue(vars));
+		public int run(ExecutionContext ctx) {
+			ctx.print(value.stringValue(ctx));
 			return 0;
 		}
 	}
@@ -272,11 +326,7 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
+		public int run(ExecutionContext ctx) {
 			return destination;
 		}
 	}
@@ -290,11 +340,7 @@ interface Instruction {
 			return new End();
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) throws StopRun {
+		public int run(ExecutionContext ctx) throws StopRun {
 			throw new StopRun();
 		}
 	}
@@ -343,12 +389,8 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
-			if (cmp.eval(left, right, vars)) {
+		public int run(ExecutionContext ctx) {
+			if (cmp.eval(left, right, ctx)) {
 				return destination;
 			} else {
 				return 0;
@@ -376,13 +418,9 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
-			var input = Integer.parseInt(stdin.readLine());
-			vars.put(name, input);
+		public int run(ExecutionContext ctx) {
+			var input = Integer.parseInt(ctx.read());
+			ctx.setVar(name, input);
 			return 0;
 		}
 	}
@@ -401,11 +439,7 @@ interface Instruction {
 			}
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
+		public int run(ExecutionContext ctx) {
 			return destination;
 		}
 	}
@@ -419,11 +453,7 @@ interface Instruction {
 			return new Return();
 		}
 
-		public int run(
-				ProgrammableCalculatorInterface.LineReader stdin,
-				ProgrammableCalculatorInterface.LinePrinter stdout,
-				Map<String, Integer> vars
-		) {
+		public int run(ExecutionContext ctx) {
 			return Integer.MIN_VALUE;
 		}
 	}
@@ -444,9 +474,9 @@ interface Expression {
 		throw new SyntaxError(expr);
 	}
 
-	int intValue(Map<String, Integer> vars);
+	int intValue(ExecutionContext ctx);
 
-	String stringValue(Map<String, Integer> vars);
+	String stringValue(ExecutionContext ctx);
 
 	class Variable implements Expression {
 		String name;
@@ -467,17 +497,12 @@ interface Expression {
 			}
 		}
 
-		public int intValue(Map<String, Integer> vars) {
-			var value = vars.get(name);
-			if (value == null) {
-				throw new ExpressionValueException("no variable '" + name + "' defined");
-			}
-
-			return value;
+		public int intValue(ExecutionContext ctx) {
+			return ctx.getVar(name);
 		}
 
-		public String stringValue(Map<String, Integer> vars) {
-			return Integer.toString(intValue(vars));
+		public String stringValue(ExecutionContext ctx) {
+			return Integer.toString(intValue(ctx));
 		}
 	}
 
@@ -500,7 +525,7 @@ interface Expression {
 			}
 		}
 
-		public int intValue(Map<java.lang.String, Integer> vars) {
+		public int intValue(ExecutionContext ctx) {
 			try {
 				return Integer.parseInt(content);
 			} catch (NumberFormatException e) {
@@ -508,7 +533,7 @@ interface Expression {
 			}
 		}
 
-		public String stringValue(Map<java.lang.String, Integer> vars) {
+		public String stringValue(ExecutionContext ctx) {
 			return content;
 		}
 	}
@@ -532,12 +557,12 @@ interface Expression {
 			}
 		}
 
-		public int intValue(Map<java.lang.String, Integer> vars) {
+		public int intValue(ExecutionContext ctx) {
 			return value;
 		}
 
-		public String stringValue(Map<java.lang.String, Integer> vars) {
-			return Integer.toString(intValue(vars));
+		public String stringValue(ExecutionContext ctx) {
+			return Integer.toString(intValue(ctx));
 		}
 	}
 
@@ -586,38 +611,38 @@ interface Expression {
 			}
 		}
 
-		public int intValue(Map<String, Integer> vars) {
-			return operand.calc(left, right, vars);
+		public int intValue(ExecutionContext ctx) {
+			return operand.calc(left, right, ctx);
 		}
 
-		public String stringValue(Map<String, Integer> vars) {
-			return Integer.toString(intValue(vars));
+		public String stringValue(ExecutionContext ctx) {
+			return Integer.toString(intValue(ctx));
 		}
 
 		enum Operand {
 			Add {
 				@Override
-				int calc(Expression left, Expression right, Map<String, Integer> vars) {
-					return left.intValue(vars) + right.intValue(vars);
+				int calc(Expression left, Expression right, ExecutionContext ctx) {
+					return left.intValue(ctx) + right.intValue(ctx);
 				}
 			}, Sub {
 				@Override
-				int calc(Expression left, Expression right, Map<String, Integer> vars) {
-					return left.intValue(vars) - right.intValue(vars);
+				int calc(Expression left, Expression right, ExecutionContext ctx) {
+					return left.intValue(ctx) - right.intValue(ctx);
 				}
 			}, Mul {
 				@Override
-				int calc(Expression left, Expression right, Map<String, Integer> vars) {
-					return left.intValue(vars) * right.intValue(vars);
+				int calc(Expression left, Expression right, ExecutionContext ctx) {
+					return left.intValue(ctx) * right.intValue(ctx);
 				}
 			}, Div {
 				@Override
-				int calc(Expression left, Expression right, Map<String, Integer> vars) {
-					return left.intValue(vars) / right.intValue(vars);
+				int calc(Expression left, Expression right, ExecutionContext ctx) {
+					return left.intValue(ctx) / right.intValue(ctx);
 				}
 			};
 
-			abstract int calc(Expression left, Expression right, Map<String, Integer> vars);
+			abstract int calc(Expression left, Expression right, ExecutionContext ctx);
 		}
 	}
 }

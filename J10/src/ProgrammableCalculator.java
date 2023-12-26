@@ -98,7 +98,7 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 				var next = instruction.run(ctx);
 
 				switch (next) {
-					case 0 -> {
+					case Integer.MAX_VALUE -> {
 						pc += 1;
 					}
 					case Integer.MIN_VALUE -> {
@@ -109,11 +109,11 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 						}
 					}
 					default -> {
-						if (next > 0) {
+						if (next >= 0) {
 							pc = next;
 						} else {
 							stack.push(pc + 1);
-							pc = -next;
+							pc = -next - 1;
 						}
 					}
 				}
@@ -247,9 +247,9 @@ interface Instruction {
 	 * @return An int with the following meanings:<br> <table>
 	 * <tr> <td>value</td> <td>meaning</td> </tr>
 	 * <tr> <td>MIN</td> <td>Return from a subroutine</td> </tr>
-	 * <tr> <td>>MIN, <0</td> <td>Go to a subroutine at line -return</td> </tr>
-	 * <tr> <td>0</td> <td>Continue on the next line</td> </tr>
-	 * <tr> <td>>0</td> <td>Go to the returned line</td> </tr>
+	 * <tr> <td>MAX</td> <td>Continue on the next line</td> </tr>
+	 * <tr> <td>>= 0, < MAX</td> <td>Go to the returned line</td> </tr>
+	 * <tr> <td>> MIN, < 0</td> <td>Go to a subroutine at line -return - 1</td> </tr>
 	 * </table>
 	 * @throws StopRun To stop the execution of the program
 	 */
@@ -282,7 +282,7 @@ interface Instruction {
 
 		public int run(ExecutionContext ctx) {
 			ctx.setVar(name, value.intValue(ctx));
-			return 0;
+			return Integer.MAX_VALUE;
 		}
 	}
 
@@ -302,7 +302,7 @@ interface Instruction {
 
 		public int run(ExecutionContext ctx) {
 			ctx.print(value.stringValue(ctx));
-			return 0;
+			return Integer.MAX_VALUE;
 		}
 	}
 
@@ -402,7 +402,7 @@ interface Instruction {
 			if (cmp.eval(left, right, ctx)) {
 				return destination;
 			} else {
-				return 0;
+				return Integer.MAX_VALUE;
 			}
 		}
 	}
@@ -430,7 +430,7 @@ interface Instruction {
 		public int run(ExecutionContext ctx) {
 			var input = Integer.parseInt(ctx.read());
 			ctx.setVar(name, input);
-			return 0;
+			return Integer.MAX_VALUE;
 		}
 	}
 
@@ -448,7 +448,7 @@ interface Instruction {
 					throw new GotoError(dest);
 				}
 
-				res.destination = -mappedDest;
+				res.destination = -mappedDest - 1;
 				return res;
 			} catch (NumberFormatException e) {
 				throw new SyntaxError(line, e.getMessage());

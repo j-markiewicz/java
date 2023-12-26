@@ -5,7 +5,8 @@ import java.util.regex.Pattern;
 public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	static final boolean ASSERTIONS;
 	private final ExecutionContext ctx = new ExecutionContext();
-	private final NavigableMap<Integer, MaybeUnparsedInstruction> program = new TreeMap<>();
+	private final ArrayList<MaybeUnparsedInstruction> program = new ArrayList<>(128);
+	private final TreeMap<Integer, Integer> lineMappings = new TreeMap<>();
 	private final Stack<Integer> stack = new Stack<>();
 
 	static {
@@ -25,7 +26,7 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 		var scanner = new Scanner(reader).useDelimiter(PrecompiledRegexes.NEWLINE);
 		var lineRegex = PrecompiledRegexes.LINE;
 
-		var syncProgram = Collections.synchronizedSortedMap(program);
+		SortedMap<Integer, MaybeUnparsedInstruction> syncProgram = Collections.synchronizedSortedMap(new TreeMap<>());
 		scanner.tokens().parallel().forEach((line) -> {
 			var matcher = lineRegex.matcher(line);
 			var matchRes = matcher.matches();
@@ -41,9 +42,14 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 			syncProgram.put(index, instruction);
 		});
 
-		new Thread(() -> program.values().parallelStream().forEach(inst -> {
+		for (var entry: syncProgram.entrySet()) {
+			lineMappings.put(entry.getKey(), program.size());
+			program.add(entry.getValue());
+		}
+
+		new Thread(() -> program.parallelStream().forEach(inst -> {
 			try {
-				inst.parse();
+				inst.parse(lineMappings);
 			} catch (Exception ignored) {
 				// Ignore all errors when pre-parsing
 			}
@@ -77,27 +83,23 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 	 */
 	@Override
 	public void run(int line) {
-		int pc = line;
+		int pc = lineMappings.get(line);
 
-		assert !program.containsKey(0);
-		assert program.containsKey(pc);
-		assert pc > 0;
-
-		while (true) {
+		while (pc < program.size()) {
 			var upInstruction = program.get(pc);
 
 			if (upInstruction == null) {
 				return;
 			}
 
-			var instruction = upInstruction.get();
+			var instruction = upInstruction.get(lineMappings);
 
 			try {
 				var next = instruction.run(ctx);
 
 				switch (next) {
 					case 0 -> {
-						pc = Objects.requireNonNullElse(program.higherKey(pc), 0);
+						pc += 1;
 					}
 					case Integer.MIN_VALUE -> {
 						try {
@@ -108,23 +110,15 @@ public class ProgrammableCalculator implements ProgrammableCalculatorInterface {
 					}
 					default -> {
 						if (next > 0) {
-							if (ASSERTIONS && !program.containsKey(next)) {
-								throw new GotoError(pc, next);
-							}
-
 							pc = next;
 						} else {
-							if (ASSERTIONS && !program.containsKey(-next)) {
-								throw new GosubError(pc, -next);
-							}
-
-							stack.push(Objects.requireNonNullElse(program.higherKey(pc), 0));
+							stack.push(pc + 1);
 							pc = -next;
 						}
 					}
 				}
 			} catch (StopRun stop) {
-				pc = 0;
+				return;
 			}
 		}
 	}
@@ -139,17 +133,17 @@ class MaybeUnparsedInstruction {
 		parsed = null;
 	}
 
-	Instruction get() {
+	Instruction get(NavigableMap<Integer, Integer> lineMappings) {
 		if (parsed == null) {
-			parse();
+			parse(lineMappings);
 		}
 
 		return parsed;
 	}
 
-	synchronized void parse() {
+	synchronized void parse(NavigableMap<Integer, Integer> lineMappings) {
 		if (parsed == null) {
-			parsed = Instruction.parse(source);
+			parsed = Instruction.parse(source, lineMappings);
 		}
 	}
 }
@@ -217,7 +211,7 @@ enum Comparison {
 }
 
 interface Instruction {
-	static Instruction parse(String line) {
+	static Instruction parse(String line, NavigableMap<Integer, Integer> lineMappings) {
 		var instRegex = PrecompiledRegexes.INSTRUCTION;
 
 		try {
@@ -231,11 +225,11 @@ interface Instruction {
 			return switch (inst) {
 				case "LET" -> Let.parse(rest);
 				case "PRINT" -> Print.parse(rest);
-				case "GOTO" -> Goto.parse(rest);
+				case "GOTO" -> Goto.parse(rest, lineMappings);
 				case "END" -> End.parse(rest);
-				case "IF" -> If.parse(rest);
+				case "IF" -> If.parse(rest, lineMappings);
 				case "INPUT" -> Input.parse(rest);
-				case "GOSUB" -> Gosub.parse(rest);
+				case "GOSUB" -> Gosub.parse(rest, lineMappings);
 				case "RETURN" -> Return.parse(rest);
 				default -> throw new SyntaxError(line);
 			};
@@ -315,11 +309,18 @@ interface Instruction {
 	class Goto implements Instruction {
 		int destination;
 
-		static Instruction parse(String line) {
+		static Instruction parse(String line, NavigableMap<Integer, Integer> lineMappings) {
 			var res = new Goto();
 
 			try {
-				res.destination = Integer.parseInt(line);
+				var dest = Integer.parseInt(line);
+				var mappedDest = lineMappings.get(dest);
+
+				if (mappedDest == null) {
+					throw new GotoError(dest);
+				}
+
+				res.destination = mappedDest;
 				return res;
 			} catch (NumberFormatException e) {
 				throw new SyntaxError(line, e.getMessage());
@@ -351,7 +352,7 @@ interface Instruction {
 		Comparison cmp;
 		int destination;
 
-		static Instruction parse(String line) {
+		static Instruction parse(String line, Map<Integer, Integer> lineMappings) {
 			var res = new If();
 
 			var instRegex = PrecompiledRegexes.IF;
@@ -363,7 +364,15 @@ interface Instruction {
 
 				res.left = Expression.parse(matcher.group("left"));
 				res.right = Expression.parse(matcher.group("right"));
-				res.destination = Integer.parseInt(matcher.group("dest"));
+
+				var dest = Integer.parseInt(matcher.group("dest"));
+				var mappedDest = lineMappings.get(dest);
+
+				if (mappedDest == null) {
+					throw new SyntaxError(line, "No such destination: " + dest);
+				}
+
+				res.destination = mappedDest;
 
 				switch (matcher.group("cmp")) {
 					case "=": {
@@ -428,11 +437,18 @@ interface Instruction {
 	class Gosub implements Instruction {
 		int destination;
 
-		static Instruction parse(String line) {
+		static Instruction parse(String line, Map<Integer, Integer> lineMappings) {
 			var res = new Gosub();
 
 			try {
-				res.destination = -Integer.parseInt(line);
+				var dest = Integer.parseInt(line);
+				var mappedDest = lineMappings.get(dest);
+
+				if (mappedDest == null) {
+					throw new GotoError(dest);
+				}
+
+				res.destination = -mappedDest;
 				return res;
 			} catch (NumberFormatException e) {
 				throw new SyntaxError(line, e.getMessage());
@@ -667,14 +683,14 @@ class SyntaxError extends RuntimeException {
 }
 
 class GotoError extends RuntimeException {
-	GotoError(int line, int destination) {
-		super("GOTO error in line " + line + ": no such destination " + destination);
+	GotoError(int destination) {
+		super("GOTO error: no such destination " + destination);
 	}
 }
 
 class GosubError extends RuntimeException {
-	GosubError(int line, int destination) {
-		super("GOSUB error in line " + line + ": no such destination " + destination);
+	GosubError(int destination) {
+		super("GOSUB error: no such destination " + destination);
 	}
 }
 

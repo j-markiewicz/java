@@ -36,13 +36,12 @@ public class Klient implements NetConnection {
 		try (var socket = new Socket(host, port)) {
 			socket.getOutputStream().write(REQUEST.array());
 			var reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			var sum = reader.lines().takeWhile(l -> !l.equals("EOD")).filter(l -> l.matches("^\\d+$")).map(BigInteger::new).reduce(BigInteger.TWO,
+			var sum = reader.lines().takeWhile(l -> !l.equals("EOD")).filter(l -> l.matches("^\\d+$")).map(BigInteger::new).reduce(BigInteger.ZERO,
 					BigInteger::add
 			);
 			sum = sum.add(password);
 			var res = new BigInteger(reader.lines().map(l -> Pattern.compile(".*?(\\d+).*\\?").matcher(l)).filter(
 					Matcher::matches).findFirst().orElseThrow().group(1));
-
 			if (sum.equals(res)) {
 				socket.getOutputStream().write(sum.toString().getBytes(StandardCharsets.UTF_8));
 			} else {
